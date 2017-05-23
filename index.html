@@ -6,6 +6,18 @@
     </head>
     <body>
     <style type="text/css">
+    html,body{
+        margin: 0;
+        padding: 0;
+    }
+    table{
+        margin: 0;
+        padding: 0;
+    }
+    table tr tr{
+        margin: 0;
+        padding: 0;
+    }
     text{
         cursor: pointer;
     }
@@ -52,7 +64,8 @@
         display: inline;
     }
     #visRenderingArea{
-
+        margin: 0;
+        padding: 0;
     }
     *.unselectable {
    -moz-user-select: -moz-none;
@@ -63,89 +76,13 @@
     }
     </style>
 
-    <button onclick="generateTree($('#mainInput').val())">Go!</button>
 
-  <table>
+
+  <table cellpadding="0" cellspacing="0">
         <tr>
             <td>
- <textarea class="mainInputClass" id="mainInput" autocapitalize="false" >
-Knowledge Indice 2016
-    Philosophy
-        Aristotle
-    Literature
-        Josh Billings
-            1818
-            There are two things in life for which we are never truly prepared: twins
-        Geoffrey Chaucer
-            First poet in English Language
-        John Fowles
-            The Collector
-    Art
-        Hans Haacke
-            Luke Lubrewski
-                Art Critic
-                All Systems Go!
-            Blue Sail(1964-55)
-            Condensation Wall(1963)
-    Design
-        Phillip Stark
-    Computer Science
-        Todd.C.Miller
-            Sudo
-    Physics
-        Albert Einstein
-    Chemistry
-        NA
-    Economics
-        Adam Smith
-        Ben Bernanke
-    History
-        King Arthur
-            The Round Table
-    Socialology
-        NA
-    General
-    Methology
-        Sacred King
-        The Black Sun
-            Germanic neopaganism
-                Heathenry
-                    Modern Paganism
-                        Freyr
-                            Died with Ragnarök
-                            Associated with Prosperity
-                    Iron Age
-                        1Millium, or 800 BC
-        Slender Man
-        Centaur
-        Cerberus
-            Hedes
-        Sirens
-        Pegasus
-        Empusa
-        Griffins
-        Sphinx
-            Riddle, two leg in morning, two in noon, three in afternoon
-        Chimera
-            responsible for natural disasters
-        Phoenixes
-             lives for 1400 years
-        Hydra
-            multi-head sea monster
-        Gorgons
-            Medusa
-        Cyclopes
-        Minitour
-            bull-head man body
-        Typhon
-        Helioperlus
-        Giaia
-            Father of Typhone
-        Charybdis
-            Monster who created the swiril devour fleet
-    Terms
-        NA
-    </textarea>
+        <textarea class="mainInputClass" id="mainInput" autocapitalize="false" ></textarea><br>
+        <button onclick="save()">Save Changes</button>
         </td>
             <td><svg id="visRenderingArea" width="960" height="800"></svg></td>
         </tr>
@@ -173,12 +110,17 @@ Knowledge Indice 2016
                 return d.id;
             }))
 
-            .force("charge", d3.forceManyBody().strength(-140))
+            .force("charge", d3.forceManyBody().strength(-180))
             .force("center", d3.forceCenter(width / 2, height / 2));
+         d3.csv("text_result.json", function(data) {
+          $('#mainInput').val(unescape(data.columns[0]));
 
-        d3.json("test.json", function(error, graph) {
+          //$('#mainInput').val('ahaha\naegaegea\n');
+        });
+        d3.json("data_result.json", function(error, graph) {
             if (error) throw error;
-            graph = generateTree($('#mainInput').val());
+            $('#visRenderingArea').width($(document).width()-300);
+           // graph = generateTree($('#mainInput').val());
             var link = svg.append("g")
                 .attr("class", "links")
                 .attr("id","linkControl")
@@ -302,7 +244,7 @@ Knowledge Indice 2016
 
 
 
-        $(document).mousedown(function() {
+        $('#visRenderingArea').mousedown(function() {
             isDragging = true;
             if(linkControl.attr("transform") != undefined){
                 cm = linkControl.attr("transform").split(/[()]/)[1].split(",");
@@ -365,10 +307,15 @@ Knowledge Indice 2016
             simulation.alphaTarget(0)
         }
 
-        function generateTreeHelper(lineText, index){
-
+        function save(){
+            obj = generateTree($('#mainInput').val());
+            $.post( "server.php", { 'obj' :JSON.stringify(obj),
+                                    'raw': JSON.stringify(escape($('#mainInput').val())),
+                                    'filename' : 'result.json'})
+              .done(function( data ) {
+                console.log(data);
+              });
         }
-
         function generateTree(originalText){
             var lines = originalText.split("\n")
             var obj = {};
@@ -408,6 +355,7 @@ Knowledge Indice 2016
 
                 // push links
                 if(clevel != 0){
+                    console.log(cNode);
                     tmp = {"source":cNode, "target": parent[clevel-1], "value":groupid}
                     links.push(tmp);
                 }
@@ -439,7 +387,8 @@ Knowledge Indice 2016
                             + value.substring(end));
 
                 // put caret at right position again (add one for the tab)
-                this.selectionStart = this.selectionEnd = start + 1;
+                this.selectionStart = this.selectionEnd = start + 4;
+
 
                 // prevent the focus lose
                 e.preventDefault();
