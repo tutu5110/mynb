@@ -9,6 +9,7 @@
     html,body{
         margin: 0;
         padding: 0;
+        overflow: hidden;
     }
     table{
         margin: 0;
@@ -51,14 +52,17 @@
     }
 
     .mainInputClass{
-        width: 200px;
+        width: 500px;
         height: 800px;
         overflow: auto;
         white-space: pre;
     }
-    button{
-        width: 100px;
+    .sysButton{
+        width: 150px;
         height:30px;
+    }
+    #saveButton{
+        margin: 10px 0 20px 0;
     }
     #master div{
         display: inline;
@@ -82,320 +86,346 @@
         <tr>
             <td>
         <textarea class="mainInputClass" id="mainInput" autocapitalize="false" ></textarea><br>
-        <button onclick="save()">Save Changes</button>
+        <button class="sysButton" id="saveButton" onclick="save()">Save Changes</button>
         </td>
-            <td><svg id="visRenderingArea" width="960" height="800"></svg></td>
+            <td>
+                <div id="renderHolder">
+                <svg id="visRenderingArea" width="1" height="1"></svg>
+                </div>
+            </td>
         </tr>
-        </table>
-        <script type="text/javascript">
-        jQuery.Color.hook( "stroke" );
-        document.addEventListener("keypress", keyFuncs);
-        var svg = d3.select("svg"),
-            width = +svg.attr("width"),
-            height = +svg.attr("height");
-        var isDragging = false;
-        var initialDragX = 0;
-        var initialDragY = 0;
-        var nodeControl = null;
-        var linkControl = null;
-        var visRenderingArea = null;
-        var cm = null;
-        var cmx = 0 ;
-        var cmy = 0;
+  </table>
+    <script type="text/javascript">
+    jQuery.Color.hook( "stroke" );
+    document.addEventListener("keypress", keyFuncs);
+    var svg = d3.select("svg"),
+        width = +svg.attr("width"),
+        height = +svg.attr("height");
+    var isDragging = false;
+    var initialDragX = 0;
+    var initialDragY = 0;
+    var nodeControl = null;
+    var linkControl = null;
+    var visRenderingArea = null;
+    var cm = null;
+    var cmx = 0 ;
+    var cmy = 0;
+    var gVizScale = 1;
+    var gmx = 0;
+    var gmy = 0;
 
-        var color = d3.scaleOrdinal(d3.schemeCategory20);
-        //var repelForce = d3.forceManyBody().strength(-440).distanceMax(50).distanceMin(10);
-        var simulation = d3.forceSimulation()
-            .force("link", d3.forceLink().id(function(d) {
+    var color = d3.scaleOrdinal(d3.schemeCategory20);
+    //var repelForce = d3.forceManyBody().strength(-440).distanceMax(50).distanceMin(10);
+    var simulation = d3.forceSimulation()
+        .force("link", d3.forceLink().id(function(d) {
+            return d.id;
+        }))
+
+        .force("charge", d3.forceManyBody().strength(-180))
+        .force("center", d3.forceCenter(width / 2, height / 2));
+    d3.csv("text_result.json?rand="+ parseInt(Math.random() * 1000), function(data) {
+      $('#mainInput').val(unescape(data.columns[0]));
+      });
+
+    d3.json("data_result.json?rand="+ parseInt(Math.random() * 1000), function(error, graph) {
+        if (error) throw error;
+        /* resizing */
+
+        $('#visRenderingArea').width($(document).width());
+        $('#visRenderingArea').height($(document).height());
+       // graph = generateTree($('#mainInput').val());
+        var link = svg.append("g")
+            .attr("class", "links")
+            .attr("id","linkControl")
+            .selectAll("line")
+            .data(graph.links)
+            .enter().append("line")
+            .attr("id", function(d,i){
+               return "line_" + i;
+            })
+            .attr("stroke-width", function(d) {
+                return Math.sqrt(d.value);
+            });
+
+        var node = svg.append("g")
+            .attr("class", "nodes")
+            .attr("id","nodeControl")
+            .selectAll("circle")
+            .data(graph.nodes)
+            .enter().append("g")
+            .attr("id",function(d,i){
+                return "node_"+i
+            })
+            .on("mouseover", mouseOverEvent)
+            .on("mouseout", mouseOutEvent)
+            .call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended));
+
+        node.append("circle")
+            .attr("r", 5)
+            .attr("fill", function(d) {
+                return color(d.group);
+            })
+        node.append("title")
+            .text(function(d) {
                 return d.id;
-            }))
+            });
 
-            .force("charge", d3.forceManyBody().strength(-180))
-            .force("center", d3.forceCenter(width / 2, height / 2));
-         d3.csv("text_result.json", function(data) {
-          $('#mainInput').val(unescape(data.columns[0]));
+        node
+        .append("text")
+        .text(function(d){ return d.caption})
+        .attr("fill","rgb(50,50,50)")
+        .attr("font-size","10px")
+        .attr("class","unselectable")
+        .attr("font-family","sans-serif")
+        simulation
+            .nodes(graph.nodes)
+            .on("tick", ticked);
 
-          //$('#mainInput').val('ahaha\naegaegea\n');
-        });
-        d3.json("data_result.json", function(error, graph) {
-            if (error) throw error;
-            $('#visRenderingArea').width($(document).width()-300);
-           // graph = generateTree($('#mainInput').val());
-            var link = svg.append("g")
-                .attr("class", "links")
-                .attr("id","linkControl")
-                .selectAll("line")
-                .data(graph.links)
-                .enter().append("line")
-                .attr("id", function(d,i){
-                   return "line_" + i;
+        simulation.force("link")
+            .links(graph.links);
+
+        nodeControl = $('#nodeControl');
+        linkControl = $('#linkControl');
+        visRenderingArea = $('#visRenderingArea');
+
+        function ticked() {
+            link
+                .attr("source",function(d){
+                    return d.source.id;
                 })
-                .attr("stroke-width", function(d) {
-                    return Math.sqrt(d.value);
+                .attr("target",function(d){
+                    return d.target.id;
+                })
+                .attr("x1", function(d) {
+                    return d.source.x;
+                })
+                .attr("y1", function(d) {
+                    return d.source.y;
+                })
+                .attr("x2", function(d) {
+                    return d.target.x;
+                })
+                .attr("y2", function(d) {
+                    return d.target.y;
                 });
 
-            var node = svg.append("g")
-                .attr("class", "nodes")
-                .attr("id","nodeControl")
-                .selectAll("circle")
-                .data(graph.nodes)
-                .enter().append("g")
-                .attr("id",function(d,i){
-                    return "node_"+i
-                })
-                .on("mouseover", mouseOverEvent)
-                .on("mouseout", mouseOutEvent)
-                .call(d3.drag()
-                    .on("start", dragstarted)
-                    .on("drag", dragged)
-                    .on("end", dragended));
-
-            node.append("circle")
-                .attr("r", 5)
-                .attr("fill", function(d) {
-                    return color(d.group);
-                })
-            node.append("title")
-                .text(function(d) {
-                    return d.id;
-                });
-
-            node
-            .append("text")
-            .text(function(d){ return d.caption})
-            .attr("fill","rgb(50,50,50)")
-            .attr("font-size","10px")
-            .attr("class","unselectable")
-            .attr("font-family","sans-serif")
-            simulation
-                .nodes(graph.nodes)
-                .on("tick", ticked);
-
-            simulation.force("link")
-                .links(graph.links);
-
-            nodeControl = $('#nodeControl');
-            linkControl = $('#linkControl');
-            visRenderingArea = $('#visRenderingArea');
-
-            function ticked() {
-                link
-                    .attr("source",function(d){
-                        return d.source.id;
-                    })
-                    .attr("target",function(d){
-                        return d.target.id;
-                    })
-                    .attr("x1", function(d) {
-                        return d.source.x;
-                    })
-                    .attr("y1", function(d) {
-                        return d.source.y;
-                    })
-                    .attr("x2", function(d) {
-                        return d.target.x;
-                    })
-                    .attr("y2", function(d) {
-                        return d.target.y;
-                    });
-
-                node.attr("transform", function (d) {
-                    return "translate(" + d.x + "," + d.y + ")";
-                });
-            }
-        });
-
-        function mouseOverEvent(d,i){
-            $("#node_"+i).removeClass("nodeLowlight");
-            $('.links').children().each(function(){
-                var cid = this.id
-                $('#'+cid).css("stroke","#efefef")
-            })
-
-            $("#node_"+i).addClass("nodeHighlight");
-            $('.links').children().each(function(){
-                var cid = this.id
-                $.each(this.attributes,function(i,a){
-                    if(a.name == "target")
-                        if(a.value == d.id)
-                            $('#'+cid).animate({
-                                'stroke': '#000'
-                             }, 300);
-                    if(a.name == "source")
-                        if(a.value == d.id)
-                            $('#'+cid).animate({
-                                'stroke': '#000'
-                             }, 300);
-                })
-            })
-
-
-         //   console.log($(".links").length)
+            node.attr("transform", function (d) {
+                return "translate(" + d.x + "," + d.y + ")";
+            });
         }
+    });
 
-        function mouseOutEvent(d,i){
-            $("#node_"+i).removeClass("nodeHighlight");
-            $("#node_"+i).addClass("nodeLowlight");
-            $('.links').children().each(function(){
-                var cid = this.id
-                $('#'+cid).css("stroke","#efefef")
-            })
-        }
-
-
-
-        $('#visRenderingArea').mousedown(function() {
-            isDragging = true;
-            if(linkControl.attr("transform") != undefined){
-                cm = linkControl.attr("transform").split(/[()]/)[1].split(",");
-                cmx = parseFloat(cm[0]);
-                cmy = parseFloat(cm[1]);
-            }
-            visRenderingArea.css('cursor', 'pointer');
+    function mouseOverEvent(d,i){
+        $("#node_"+i).removeClass("nodeLowlight");
+        $('.links').children().each(function(){
+            var cid = this.id
+            $('#'+cid).css("stroke","#efefef")
         })
-        .mousemove(function(event) {
-            if(isDragging){
-                if(initialDragY == 0 && initialDragX == 0){
-                    initialDragX = event.pageX;
-                    initialDragY = event.pageY;
-                }
-                var mx = event.pageX - initialDragX;
-                var my = event.pageY - initialDragY;
 
-                mx += cmx;
-                my += cmy;
+        $("#node_"+i).addClass("nodeHighlight");
+        $('.links').children().each(function(){
+            var cid = this.id
+            $.each(this.attributes,function(i,a){
+                if(a.name == "target")
+                    if(a.value == d.id)
+                        $('#'+cid).animate({
+                            'stroke': '#000'
+                         }, 300);
+                if(a.name == "source")
+                    if(a.value == d.id)
+                        $('#'+cid).animate({
+                            'stroke': '#000'
+                         }, 300);
+            })
+        })
+   }
 
-                nodeControl.attr("transform", "translate("+mx+","+my+")");
-                linkControl.attr("transform", "translate("+mx+","+my+")");
+    function mouseOutEvent(d,i){
+        $("#node_"+i).removeClass("nodeHighlight");
+        $("#node_"+i).addClass("nodeLowlight");
+        $('.links').children().each(function(){
+            var cid = this.id
+            $('#'+cid).css("stroke","#efefef")
+        })
+    }
+
+    /* mouse functions for visualizing area */
+    $('#visRenderingArea').mousedown(function() {
+        isDragging = true;
+        if(linkControl.attr("transform") != undefined){
+            cm = linkControl.attr("transform").split(/[()]/)[1].split(",");
+            cmx = parseFloat(cm[0]);
+            cmy = parseFloat(cm[1]);
+        }
+        visRenderingArea.css('cursor', 'pointer');
+    })
+    .mousemove(function(event) {
+        if(isDragging){
+            if(initialDragY == 0 && initialDragX == 0){
+                initialDragX = event.pageX;
+                initialDragY = event.pageY;
             }
-         })
-        .mouseup(function() {
-            isDragging = false;
-            initialDragY = 0;
-            initialDragX = 0 ;
-            visRenderingArea.css('cursor', 'default');
-        });
-        function keyFuncs(e){
-            switch(e.key){
-                case "r":
-                    reset()
+            gmx = event.pageX - initialDragX;
+            gmy = event.pageY - initialDragY;
+
+            gmx += cmx;
+            gmy += cmy;
+
+            nodeControl.attr("transform", "translate("+gmx+","+gmy+") scale("+gVizScale+","+gVizScale+")");
+            linkControl.attr("transform", "translate("+gmx+","+gmy+") scale("+gVizScale+","+gVizScale+")");
+
+        }
+     })
+    .mouseup(function() {
+        isDragging = false;
+        initialDragY = 0;
+        initialDragX = 0 ;
+        visRenderingArea.css('cursor', 'default');
+    });
+
+    /* bind mousewheel for zoom in and out */
+    $('#renderHolder').bind('mousewheel',function(event){
+        if (event.originalEvent.wheelDelta > 0 || event.originalEvent.detail < 0)
+            gVizScale += 0.1;
+        else
+            gVizScale -= 0.1
+
+        gVizScale = confine(gVizScale, 0.1,2)
+        nodeControl.attr("transform", "translate("+gmx+","+gmy+") scale("+gVizScale+","+gVizScale+")");
+        linkControl.attr("transform", "translate("+gmx+","+gmy+") scale("+gVizScale+","+gVizScale+")");
+    });
+
+    function confine(v, low, high){
+        v = v < low ? low : v;
+        v = v > high ? high : v;
+        return v;
+    }
+
+    function keyFuncs(e){
+        switch(e.key){
+            case "r":
+                reset()
+            break;
+
+            // do nohing default
+            default:
+            break;
+        }
+    }
+
+    function dragstarted(d) {
+        if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+    }
+
+    function dragged(d) {
+        d.fx = d3.event.x;
+        d.fy = d3.event.y;
+    }
+
+    function dragended(d) {
+    //    if (!d3.event.active) simulation.alphaTarget(0);
+     //   d.fx = null;
+      //  d.fy = null;
+    }
+    function reset(){
+        simulation.alphaTarget(0)
+    }
+
+    function save(){
+        obj = generateTree($('#mainInput').val());
+        console.log(obj)
+        return
+        $.post( "server.php", { 'obj' :JSON.stringify(obj),
+                                'raw': JSON.stringify(escape($('#mainInput').val())),
+                                'filename' : 'result.json'})
+          .done(function( data ) {
+            console.log(data);
+          });
+    }
+    function generateTree(originalText){
+        var lines = originalText.split("\n")
+        var obj = {};
+        var nodes = [];
+        var links = [];
+        var cl = 0;
+        var groupid = 0;
+        var parent = []
+        var clevel = 0;
+        var plevel = 0;
+        var cid = 0
+        var pNode = "";
+        var caption = "";
+
+        for(var i = 0;i < lines.length;i++){
+            num_tab = numberOfTabs(lines[i]);
+            if( num_tab == 1)
+                groupid ++
+            cNode = lines[i].split("    ")[num_tab].toLowerCase().replace(/[&\/\\#,+()$~%.'":*?<>/ /{}]/g,'_');
+            caption = lines[i].split("    ")[num_tab];
+            clevel = num_tab;
+
+            if(cNode == "")
                 break;
+            if(clevel > plevel){
+                parent[plevel] = pNode;
 
-                // do nohing default
-                default:
-                break;
             }
-        }
 
-        function dragstarted(d) {
-            if (!d3.event.active) simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-        }
+            //console.log("current node is " + cNode + ", parent is " + parent[clevel-1] );
 
-        function dragged(d) {
-            d.fx = d3.event.x;
-            d.fy = d3.event.y;
-        }
+            var tmp = {id: cNode,
+                       caption:caption,
+                       group: groupid}
+            // push nodes
+            nodes.push(tmp);
 
-        function dragended(d) {
-        //    if (!d3.event.active) simulation.alphaTarget(0);
-         //   d.fx = null;
-          //  d.fy = null;
-        }
-        function reset(){
-            simulation.alphaTarget(0)
-        }
-
-        function save(){
-            obj = generateTree($('#mainInput').val());
-            $.post( "server.php", { 'obj' :JSON.stringify(obj),
-                                    'raw': JSON.stringify(escape($('#mainInput').val())),
-                                    'filename' : 'result.json'})
-              .done(function( data ) {
-                console.log(data);
-              });
-        }
-        function generateTree(originalText){
-            var lines = originalText.split("\n")
-            var obj = {};
-            var nodes = [];
-            var links = [];
-            var cl = 0;
-            var groupid = 0;
-            var parent = []
-            var clevel = 0;
-            var plevel = 0;
-            var cid = 0
-            var pNode = "";
-            var caption = "";
-
-            for(var i = 0;i < lines.length;i++){
-                num_tab = numberOfTabs(lines[i]);
-                if( num_tab == 1)
-                    groupid ++
-                cNode = lines[i].split("    ")[num_tab].toLowerCase().replace(/[&\/\\#,+()$~%.'":*?<>/ /{}]/g,'_');
-                caption = lines[i].split("    ")[num_tab];
-                clevel = num_tab;
-
-                if(cNode == "")
-                    break;
-                if(clevel > plevel){
-                    parent[plevel] = pNode;
-
-                }
-
-                //console.log("current node is " + cNode + ", parent is " + parent[clevel-1] );
-
-                var tmp = {id: cNode,
-                           caption:caption,
-                           group: groupid}
-                // push nodes
-                nodes.push(tmp);
-
-                // push links
-                if(clevel != 0){
-                    console.log(cNode);
-                    tmp = {"source":cNode, "target": parent[clevel-1], "value":groupid}
-                    links.push(tmp);
-                }
-                //update clevel
-                plevel = clevel
-                pNode = cNode;
+            // push links
+            if(clevel != 0){
+                console.log(cNode);
+                tmp = {"source":cNode, "target": parent[clevel-1], "value":groupid}
+                links.push(tmp);
             }
-            var fobj = {"nodes": nodes, "links":links};
-            return fobj;
+            //update clevel
+            plevel = clevel
+            pNode = cNode;
         }
+        var fobj = {"nodes": nodes, "links":links};
+        return fobj;
+    }
 
-        function numberOfTabs(text) {
-          var r = text.split("    ")
-          return r.length-1;
+    function numberOfTabs(text) {
+      var r = text.split("    ")
+      return r.length-1;
+    }
+
+    $("textarea").keydown(function(e) {
+        if(e.keyCode === 9) { // tab was pressed
+            // get caret position/selection
+            var start = this.selectionStart;
+            var end = this.selectionEnd;
+
+            var $this = $(this);
+            var value = $this.val();
+
+            // set textarea value to: text before caret + tab + text after caret
+            $this.val(value.substring(0, start)
+                        + "    "
+                        + value.substring(end));
+
+            // put caret at right position again (add one for the tab)
+            this.selectionStart = this.selectionEnd = start + 4;
+
+
+            // prevent the focus lose
+            e.preventDefault();
         }
-
-        $("textarea").keydown(function(e) {
-            if(e.keyCode === 9) { // tab was pressed
-                // get caret position/selection
-                var start = this.selectionStart;
-                var end = this.selectionEnd;
-
-                var $this = $(this);
-                var value = $this.val();
-
-                // set textarea value to: text before caret + tab + text after caret
-                $this.val(value.substring(0, start)
-                            + "    "
-                            + value.substring(end));
-
-                // put caret at right position again (add one for the tab)
-                this.selectionStart = this.selectionEnd = start + 4;
-
-
-                // prevent the focus lose
-                e.preventDefault();
-            }
-        });
-
-        </script>
+    });
+    </script>
     </body>
 </html>
 
